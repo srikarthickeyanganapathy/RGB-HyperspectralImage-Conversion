@@ -182,7 +182,7 @@ python mat_to_csv_resampled.py
 
 Predicts the crop name and growth stage based on generated spectral signatures.
 
-- **Prerequisite:** Ensure `Ghisaconus_2008_001_speclib_updated.csv` is in the root folder.
+- **Prerequisite:** Ensure `GHISACONUS_2008_001_speclib_updated.xlsx` is in the root folder.
 - **Command:**
 ```bash
 python classify_crops.py

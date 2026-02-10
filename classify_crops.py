@@ -6,14 +6,14 @@ from xgboost import XGBClassifier
 import joblib 
 
 # --- CONFIGURATION ---
-LAB_DATASET = "Ghisaconus_2008_001_speclib.csv" 
+LAB_DATASET = "GHISACONUS_2008_001_speclib_updated.xlsx" 
 AI_DATASET = "Final_Dataset_Lab_Matched.csv"
 OUTPUT_FILE = "Final_Crop_Predictions.csv"
 
 def train_and_predict():
     print("--- STEP 1: LOADING DATA ---")
     try:
-        df_train = pd.read_csv(LAB_DATASET)
+        df_train = pd.read_excel(LAB_DATASET)
         df_pred = pd.read_csv(AI_DATASET)
         print(f"Training Data (Lab): {len(df_train)} rows")
         print(f"Prediction Data (AI): {len(df_pred)} rows")
