@@ -1,0 +1,21 @@
+# Virtual environment
+venv/
+
+# Dataset folders (too large for git)
+canola/
+kochia/
+ragweed/
+redroot_pigweed/
+soybean/
+sugarbeet/
+waterhemp/
+
+# Python cache
+__pycache__/
+*.pyc
+
+# Model checkpoints (too large)
+checkpoints/
+
+# Generated visualizations
+visualizations/
