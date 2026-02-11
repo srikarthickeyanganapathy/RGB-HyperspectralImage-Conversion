@@ -112,21 +112,14 @@ Project_Root/
 ├── train_physics_aware.py    # Step 1: Physics-aware training with disease injection
 ├── validate_fidelity.py      # Step 2: Validate disease-signal preservation
 ├── inference_tiled.py        # Step 3: Convert RGB images to Hyperspectral cubes (tiled)
-├── mat_to_csv_resampled.py   # Step 4: Flatten cubes to lab-matched CSV
-├── classify_crops.py         # Step 5: Predict crop name & growth stage
-├── spectral_indices.py       # Step 6: 11 Spectral Vegetation Indices (NDVI, PRI, etc.)
-├── disease_detector.py       # Step 6: Health scoring + visual reports
-├── classify_disease.py       # Step 7: Disease risk classification (XGBoost)
-├── model_dual_stream_v2.py   # Step 8: Dual-Stream CNN with SE attention
-│
-├── codes/                    # Jupyter notebooks for data preparation
-│   ├── augment.ipynb
-│   ├── preprocess.ipynb
-│   ├── image_roi.ipynb
-│   └── spectral_roi.ipynb
+├── classify_crops.py         # Step 4: Predict crop name & growth stage
+├── spectral_indices.py       # Spectral Vegetation Indices (NDVI, PRI, NDRE, etc.)
+├── disease_detector.py       # Step 5: Health scoring + visual reports
+├── model_dual_stream_v2.py   # Step 6: Dual-Stream CNN with SE attention
+├── visualize_analysis.py     # Generate analysis images (loss curves, spectral comparison)
 │
 ├── checkpoints/              # Model weights (.pth) saved here
-├── visualizations/           # Generated comparison images
+├── visualizations/           # Generated analysis images
 ├── disease_reports/          # Health reports and disease analysis output
 ├── input_images/             # Put test RGB images (.jpg) here
 ├── output_mats/              # Generated Hyperspectral cubes saved here
@@ -196,18 +189,7 @@ python inference_tiled.py --tile-size 256 --overlap 32
 - **Output:** Generates `.npy` and `.mat` files in `output_mats/` with automatic NDVI health check.
 - **Features:** Overlapping tiles with Hanning-window blending to avoid seam artifacts.
 
-### **Step 4: Flatten to Spectral Library (CSV)**
-
-Converts the 3D hyperspectral data into spectral signature rows matching laboratory standards.
-
-- **Logic:** Applies background masking (threshold > 0.05), scales units (×100), and resamples bands via interpolation.
-- **Command:**
-```bash
-python mat_to_csv_resampled.py
-```
-- **Output:** Creates `Final_Dataset_Lab_Matched.csv`.
-
-### **Step 5: Classify the Crop**
+### **Step 4: Classify the Crop**
 
 Predicts the crop name and growth stage based on generated spectral signatures.
 
@@ -218,7 +200,7 @@ python classify_crops.py
 ```
 - **Output:** Saves `Final_Crop_Predictions.csv` with predicted crop names and growth stages.
 
-### **Step 6: Generate Plant Health Reports**
+### **Step 5: Generate Plant Health Reports**
 
 Analyzes hyperspectral data using 11 spectral vegetation indices to detect stress and disease.
 
@@ -232,26 +214,7 @@ python disease_detector.py
   - Individual index maps (NDVI, PRI, NDRE, ARI, WBI, REIP)
   - Summary statistics (% healthy, moderate, severe)
 
-### **Step 7: Classify Disease Risk**
-
-Trains a disease prediction model using spectral indices and environmental data.
-
-- **Features Used:** Spectral indices + Soil (N, P, K, pH) + Environmental (Temperature, Rainfall, Irrigation)
-- **Train the model:**
-```bash
-python classify_disease.py --train
-```
-- **Predict disease on new data:**
-```bash
-python classify_disease.py --predict
-```
-- **Run unsupervised analysis on .npy files:**
-```bash
-python classify_disease.py --analyze
-```
-- **Output:** Classification report, feature importance analysis, and `disease_predictions.csv`
-
-### **Step 8: Dual-Stream CNN Disease Detection**
+### **Step 6: Dual-Stream CNN Disease Detection**
 
 Uses a specialized dual-stream CNN architecture combining spatial and spectral analysis.
 
@@ -264,6 +227,20 @@ Uses a specialized dual-stream CNN architecture combining spatial and spectral a
 python model_dual_stream_v2.py
 ```
 - **Output:** Trained dual-stream disease detection model with per-prediction confidence scores
+
+### **Bonus: Generate Analysis Visualizations**
+
+Generates publication-quality analysis images from a trained model.
+
+- **Command:**
+```bash
+python visualize_analysis.py
+```
+- **Output:** Saves 4 images in `visualizations/`:
+  - `01_training_curves.png` — Loss curves, PSNR, VI loss over epochs
+  - `02_spectral_comparison.png` — Ground truth vs reconstructed spectral signatures
+  - `03_ndvi_disease_analysis.png` — NDVI maps (healthy → diseased → reconstructed)
+  - `04_band_comparison.png` — Per-band reconstruction error
 
 ## **7. Model Performance**
 
@@ -290,7 +267,7 @@ python model_dual_stream_v2.py
 
 **Issue 2: The predicted spectral values are tiny (e.g., 0.04 instead of 16.0).**
 - **Cause:** Deep Learning outputs 0-1 range, and black backgrounds dilute the average.
-- **Fix:** Run `mat_to_csv_resampled.py`. It masks out the background and multiplies values by 100.
+- **Fix:** Apply background masking (threshold > 0.05) and scale values ×100 before comparison with lab data.
 
 **Issue 3: "Dimension Mismatch" errors.**
 - **Cause:** Lab data has SWIR bands (up to 2500nm), but the AI only generates up to 1000nm.
