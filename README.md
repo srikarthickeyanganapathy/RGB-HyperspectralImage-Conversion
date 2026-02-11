@@ -105,8 +105,6 @@ Project_Root/
 ├── disease_detector.py       # Step 6: Health Scoring + Visual Reports
 ├── classify_disease.py       # Step 7: Disease Risk Classification (XGBoost)
 ├── enhanced_agri_dataset.csv # Disease training data (6988 samples, 5 crops)
-├── test_pipeline.py          # Verify entire pipeline works
-├── quick_demo.py             # Quick 2-epoch training demo with visualization
 │
 ├── codes/                    # Jupyter notebooks for data preparation
 │   ├── augment.ipynb         # Data augmentation examples
