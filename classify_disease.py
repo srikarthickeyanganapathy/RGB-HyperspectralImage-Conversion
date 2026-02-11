@@ -51,16 +51,23 @@ os.makedirs(OUTPUT_DIR, exist_ok=True)
 # DISEASE RISK CATEGORIES
 # =====================================================================
 
-def categorize_disease_prob(prob):
-    """Convert continuous disease probability to risk category."""
-    if prob < 0.2:
-        return 'Healthy'
-    elif prob < 0.4:
+def categorize_disease_prob(prob, thresholds=None):
+    """
+    Convert continuous disease probability to risk category.
+    Uses quantile-based thresholds that adapt to the actual data distribution.
+    """
+    # Default thresholds calibrated for enhanced_agri_dataset.csv (range ~0.60-0.95)
+    if thresholds is None:
+        thresholds = [0.70, 0.78, 0.85, 0.90]
+    
+    if prob < thresholds[0]:
         return 'Low Risk'
-    elif prob < 0.6:
+    elif prob < thresholds[1]:
         return 'Moderate Risk'
-    elif prob < 0.8:
+    elif prob < thresholds[2]:
         return 'High Risk'
+    elif prob < thresholds[3]:
+        return 'Very High Risk'
     else:
         return 'Critical'
 
@@ -130,6 +137,17 @@ def train_disease_model():
     # --- MODEL 1: Disease Risk Category (Classification) ---
     print("\n--- MODEL 1: Disease Risk Classifier ---")
     df['Disease_Category'] = df['Disease_Prob'].apply(categorize_disease_prob)
+    
+    # Merge rare classes (< 5 samples) into nearest category to allow stratified splitting
+    class_counts = df['Disease_Category'].value_counts()
+    rare_classes = class_counts[class_counts < 5].index.tolist()
+    if rare_classes:
+        merge_map = {'Critical': 'High Risk', 'High Risk': 'Moderate Risk'}
+        for cls in rare_classes:
+            if cls in merge_map:
+                df.loc[df['Disease_Category'] == cls, 'Disease_Category'] = merge_map[cls]
+                print(f"  Merged rare class '{cls}' ({class_counts[cls]} samples) into '{merge_map[cls]}'")
+    
     print(f"Class distribution:\n{df['Disease_Category'].value_counts().to_string()}")
     
     le_disease = LabelEncoder()
