@@ -86,8 +86,11 @@ pip install torch torchvision numpy matplotlib tqdm
 pip install torch torchvision --index-url https://download.pytorch.org/whl/cu121
 pip install numpy matplotlib tqdm
 
-# Additional dependencies for classification (Step 4)
+# Additional dependencies for classification (Step 5)
 pip install pandas scipy h5py scikit-learn xgboost joblib
+
+# Additional dependencies for disease detection (Steps 6-7)
+pip install tensorflow openpyxl
 ```
 
 ## **5. Directory Structure**
@@ -104,6 +107,7 @@ Project_Root/
 ├── spectral_indices.py       # Step 6: 11 Spectral Vegetation Indices (NDVI, PRI, etc.)
 ├── disease_detector.py       # Step 6: Health Scoring + Visual Reports
 ├── classify_disease.py       # Step 7: Disease Risk Classification (XGBoost)
+├── dual_branch_cnn.py        # Dual-Branch 2-CNN (Spatial + Spectral branches)
 ├── enhanced_agri_dataset.csv # Disease training data (6988 samples, 5 crops)
 │
 ├── codes/                    # Jupyter notebooks for data preparation
@@ -225,6 +229,21 @@ python classify_disease.py --predict
 python classify_disease.py --analyze
 ```
 - **Output:** Classification report, feature importance analysis, and `disease_predictions.csv`
+
+### **Step 8: Train Dual-Branch CNN (Deep Learning)**
+
+Uses a specialized dual-branch CNN architecture combining spatial and spectral analysis for disease detection.
+
+- **Architecture:**
+  - **Branch 1 (Spatial CNN):** 2D convolutions extract visual features — lesion shapes, discoloration
+  - **Branch 2 (Spectral CNN):** 1D convolutions analyze spectral signatures — chlorophyll and pigment changes
+  - **Fusion Head:** Concatenates both branches → Dense layers → Softmax classification
+- **Command:**
+```bash
+python dual_branch_cnn.py --train
+python dual_branch_cnn.py --train --epochs 100
+```
+- **Output:** Trained model (`dual_branch_disease_model.keras`) + training history plots
 
 ## **7. Model Performance**
 
