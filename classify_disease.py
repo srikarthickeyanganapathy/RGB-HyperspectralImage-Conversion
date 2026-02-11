@@ -285,20 +285,104 @@ def predict_disease():
         test_df = df.sample(10, random_state=42)
     else:
         test_df = pd.read_csv(ai_csv)
+        
+        # --- COMMON-BAND ALIGNMENT ---
+        # The AI CSV has spectral columns (X437, X447...) but the model
+        # was trained on derived features (NDVI, soil data, etc.).
+        # We need to compute spectral indices from whatever bands are available.
+        ai_spectral_cols = sorted(
+            [c for c in test_df.columns if c.startswith('X')],
+            key=lambda x: int(x.replace('X', ''))
+        )
+        
+        if ai_spectral_cols:
+            print(f"\n--- BAND ALIGNMENT ---")
+            print(f"AI CSV spectral bands: {len(ai_spectral_cols)}")
+            print(f"  Range: {ai_spectral_cols[0]} – {ai_spectral_cols[-1]}")
+            
+            # Compute spectral indices from the available bands
+            ai_wavelengths = [int(c.replace('X', '')) for c in ai_spectral_cols]
+            ai_min_wl, ai_max_wl = min(ai_wavelengths), max(ai_wavelengths)
+            
+            # Extract spectral data for each sample
+            spectral_data = test_df[ai_spectral_cols].values / 100.0  # Undo SCALE_FACTOR
+            
+            # Compute indices using interpolation to standard wavelengths
+            calc = SpectralIndexCalculator(
+                num_bands=len(ai_spectral_cols),
+                wl_start=ai_min_wl,
+                wl_end=ai_max_wl
+            )
+            
+            # Compute mean-spectrum indices per sample
+            index_names = ['NDVI', 'GNDVI', 'EVI', 'PRI', 'WBI', 'NDWI',
+                           'CRI', 'ARI', 'MCARI', 'NDRE', 'REIP']
+            computed_features = {name: [] for name in index_names}
+            
+            for i in range(len(spectral_data)):
+                # Reshape single spectrum to (1, 1, bands) for the calculator
+                pixel = spectral_data[i].reshape(1, 1, -1)
+                indices = calc.compute_all(pixel)
+                for name in index_names:
+                    if name in indices:
+                        val = float(indices[name][0, 0])
+                        computed_features[name].append(val if np.isfinite(val) else 0.0)
+                    else:
+                        computed_features[name].append(0.0)
+            
+            # Add computed indices to test_df
+            for name, vals in computed_features.items():
+                test_df[name] = vals
+            
+            # Map similar column names
+            index_mapping = {'CIre': 'CRI', 'REP': 'REIP', 'SAVI': 'NDVI', 'MSI': 'WBI'}
+            for model_feat, ai_feat in index_mapping.items():
+                if model_feat not in test_df.columns and ai_feat in test_df.columns:
+                    test_df[model_feat] = test_df[ai_feat]
+            
+            derived = [c for c in computed_features if c in feature_cols]
+            print(f"  Computed indices: {', '.join(derived)}")
+            missing = [c for c in feature_cols
+                       if c not in test_df.columns
+                       and c not in ('Crop_enc', 'Stage_enc', 'Variety_enc')]
+            if missing:
+                print(f"  ⚠ Missing features (defaulting to 0): {', '.join(missing)}")
 
-    # Build feature matrix (fill missing columns with defaults)
+    # Build feature matrix with common-band alignment
     X_pred = pd.DataFrame()
+    matched = []
+    defaulted = []
     for col in feature_cols:
         if col in test_df.columns:
-            X_pred[col] = test_df[col]
+            X_pred[col] = test_df[col].fillna(0)
+            matched.append(col)
         elif col == 'Crop_enc' and 'Crop' in test_df.columns:
-            X_pred[col] = model_data['crop_encoder'].transform(test_df['Crop'])
+            try:
+                X_pred[col] = model_data['crop_encoder'].transform(test_df['Crop'])
+                matched.append(col)
+            except ValueError:
+                X_pred[col] = 0
+                defaulted.append(col)
         elif col == 'Stage_enc' and 'Growth_Stage' in test_df.columns:
-            X_pred[col] = model_data['stage_encoder'].transform(test_df['Growth_Stage'].fillna('unknown'))
+            try:
+                X_pred[col] = model_data['stage_encoder'].transform(test_df['Growth_Stage'].fillna('unknown'))
+                matched.append(col)
+            except ValueError:
+                X_pred[col] = 0
+                defaulted.append(col)
         elif col == 'Variety_enc' and 'Variety' in test_df.columns:
-            X_pred[col] = model_data['variety_encoder'].transform(test_df['Variety'].fillna('unknown'))
+            try:
+                X_pred[col] = model_data['variety_encoder'].transform(test_df['Variety'].fillna('unknown'))
+                matched.append(col)
+            except ValueError:
+                X_pred[col] = 0
+                defaulted.append(col)
         else:
-            X_pred[col] = 0  # Default for missing features
+            X_pred[col] = 0
+            defaulted.append(col)
+
+    print(f"\nFeature alignment: {len(matched)}/{len(feature_cols)} matched, "
+          f"{len(defaulted)} defaulted to 0")
 
     # Predict
     risk_categories = le_disease.inverse_transform(clf.predict(X_pred))
@@ -324,6 +408,8 @@ def predict_disease():
     })
     if 'Crop' in test_df.columns:
         results['Crop'] = test_df['Crop'].values
+    if 'Image_ID' in test_df.columns:
+        results['Image_ID'] = test_df['Image_ID'].values
 
     output_csv = os.path.join(OUTPUT_DIR, "disease_predictions.csv")
     results.to_csv(output_csv, index=False)
