@@ -101,6 +101,10 @@ Project_Root/
 ├── inference_tiled.py        # Step 3: Convert new RGB Images to Hyperspectral Cubes
 ├── mat_to_csv_resampled.py   # Step 4: Flatten Cubes to Lab-Matched CSV
 ├── classify_crops.py         # Step 5: Predict Crop Name & Growth Stage
+├── spectral_indices.py       # Step 6: 11 Spectral Vegetation Indices (NDVI, PRI, etc.)
+├── disease_detector.py       # Step 6: Health Scoring + Visual Reports
+├── classify_disease.py       # Step 7: Disease Risk Classification (XGBoost)
+├── enhanced_agri_dataset.csv # Disease training data (6988 samples, 5 crops)
 ├── test_pipeline.py          # Verify entire pipeline works
 ├── quick_demo.py             # Quick 2-epoch training demo with visualization
 │
@@ -112,6 +116,7 @@ Project_Root/
 │
 ├── checkpoints/              # Model weights (.pth) saved here
 ├── visualizations/           # Generated comparison images
+├── disease_reports/          # Health reports and disease analysis output
 ├── input_images/             # Put test RGB images (.jpg) here
 ├── output_mats/              # Generated Hyperspectral cubes saved here
 └── <crop_folders>/           # Dataset folders (canola, kochia, ragweed, etc.)
@@ -188,6 +193,40 @@ Predicts the crop name and growth stage based on generated spectral signatures.
 python classify_crops.py
 ```
 - **Output:** Saves `Final_Crop_Predictions.csv` with predicted crop names and growth stages.
+
+### **Step 6: Generate Plant Health Reports**
+
+Analyzes hyperspectral data using 11 spectral vegetation indices to detect stress and disease.
+
+- **Indices Computed:** NDVI, GNDVI, EVI, CRI, ARI, PRI, MCARI, WBI, NDWI, NDRE, REIP
+- **Command:**
+```bash
+python disease_detector.py
+```
+- **Output:** Generates visual health report images in `disease_reports/` showing:
+  - Per-pixel health score map (0-100 scale)
+  - Individual index maps (NDVI, PRI, NDRE, ARI, WBI, REIP)
+  - Summary statistics (% healthy, moderate, severe)
+
+### **Step 7: Classify Disease Risk**
+
+Trains a disease prediction model using the Enhanced Agri Dataset and predicts disease probability.
+
+- **Dataset:** `enhanced_agri_dataset.csv` (6,988 samples, 5 crops, with Disease_Prob labels)
+- **Features Used:** Spectral indices + Soil (N, P, K, pH) + Environmental (Temperature, Rainfall, Irrigation)
+- **Train the model:**
+```bash
+python classify_disease.py --train
+```
+- **Predict disease on new data:**
+```bash
+python classify_disease.py --predict
+```
+- **Run unsupervised analysis on .npy files:**
+```bash
+python classify_disease.py --analyze
+```
+- **Output:** Classification report, feature importance analysis, and `disease_predictions.csv`
 
 ## **7. Model Performance**
 
