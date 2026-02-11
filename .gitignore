@@ -19,3 +19,16 @@ checkpoints/
 
 # Generated visualizations
 visualizations/
+
+# Disease reports (generated)
+disease_reports/
+
+# TensorBoard logs
+runs/
+
+# Inference outputs
+output_mats/
+input_images/
+
+# Large CSV datasets
+*.csv
