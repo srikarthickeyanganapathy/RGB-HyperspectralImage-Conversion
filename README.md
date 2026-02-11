@@ -1,33 +1,42 @@
-# **Deep Learning-Based Spectral Reconstruction & Crop Classification**
+# **Deep Learning-Based Spectral Reconstruction & Crop Disease Detection**
 
 ## **1. Project Overview**
 
-This project provides a complete software pipeline to convert standard RGB images (3 bands) into scientific-grade Hyperspectral Data Cubes (224 bands). It subsequently uses this reconstructed data to classify crop types and growth stages without requiring expensive physical hyperspectral cameras.
+This project provides a **physics-grounded** pipeline to convert standard RGB images (3 bands) into scientific-grade Hyperspectral Data Cubes (224 bands, 400–1000 nm). It subsequently uses this reconstructed data to classify crop types, detect disease, and generate plant health reports — all without requiring expensive physical hyperspectral cameras.
 
 ### **Key Capabilities**
 
-- **Spectral Super-Resolution:** Uses a Conditional GAN (ResNet Generator + PatchGAN Discriminator) to estimate spectral signatures across 224 bands.
-- **Robust Pre-processing:** Features Patch-Based training with random cropping and 6 augmentation transforms to focus on leaf texture and ignore backgrounds.
-- **Spectral Preprocessing:** Applies SNV (Standard Normal Variate) normalization to remove multiplicative scatter effects.
-- **Advanced Loss Functions:** Combined loss using L1 + Spectral Angle Mapper (SAM) + Gradient Loss for accurate spectral and spatial reconstruction.
-- **Scientific Post-Processing:** Automatically handles unit scaling (0-1 vs 0-100%), background masking, and spectral resampling to match laboratory standards.
-- **Multi-Output Classification:** Uses XGBoost to predict both **Crop Name** (e.g., Canola, Soybean) and **Growth Stage** (e.g., Vegetative, Critical).
+- **Physics-Accurate RGB Extraction:** Correct wavelength-based band selection (R=640nm, G=550nm, B=470nm) eliminates the "Blue-Blind" error present in naive band-index approaches.
+- **Synthetic Disease Injection:** Multi-phenotype disease simulation (chlorosis, water stress, early blight) during training forces the model to learn disease spectral signatures, solving the "Healthy Bias" problem.
+- **Spectral Super-Resolution:** Conditional GAN (ResNet Generator + PatchGAN Discriminator) estimates spectral signatures across 224 bands.
+- **Physics-Aware Loss Functions:** Combined loss using L1 + Spectral Angle Mapper (SAM) + Gradient + Vegetation Index (NDVI/PRI/NDRE) for scientifically accurate reconstruction.
+- **Dual-Stream Disease Detection:** SE-attention enhanced CNN combining spatial (spectral indices) and spectral (mean signature) branches with calibrated confidence scores.
+- **Automated Health Reports:** 11 vegetation indices computed and visualized for stress and disease detection.
+- **Multi-Output Classification:** XGBoost predicts both **Crop Name** and **Growth Stage** from reconstructed spectra.
 
 ## **2. System Architecture**
 
-The workflow consists of three distinct stages:
+The workflow consists of four distinct stages:
 
-1. **Reconstruction (RGB → .MAT):**
+1. **Training (Physics-Aware):**
+   1. Loads 224-band `.npy` hyperspectral cubes.
+   2. Injects synthetic disease patterns (chlorosis, water stress, early blight).
+   3. Extracts physics-correct RGB **after** disease injection.
+   4. Trains the GAN with combined physics loss (L1 + SAM + Gradient + VI).
+
+2. **Reconstruction (RGB → Hyperspectral):**
    1. Input: Standard JPEG/PNG Crop Image.
-   2. Model: ResNet-based Generator (9 residual blocks) + PatchGAN Discriminator.
+   2. Tiled inference with overlapping Hanning-window blending.
    3. Output: Hyperspectral Cube (Height × Width × 224 Bands).
 
-2. **Flattening (.MAT → .CSV):**
-   1. Process: Extracts the leaf area (ignoring background), calculates the mean spectral signature, and interpolates values to match laboratory sensor standards.
+3. **Validation (Disease Fidelity):**
+   1. Verifies the generator preserves disease signals (NDVI, PRI, NDRE, REIP).
+   2. Catches "hallucinated health" — models that reconstruct healthy spectra for diseased inputs.
 
-3. **Classification (.CSV → Prediction):**
-   1. Model: XGBoost Classifier trained on ground-truth spectral libraries.
-   2. Output: Predicted crop name and growth stage.
+4. **Analysis & Classification:**
+   1. Health Reports: 11 spectral vegetation indices, per-pixel health scoring.
+   2. Disease Detection: Dual-stream CNN with SE attention.
+   3. Crop Classification: XGBoost on spectral signatures.
 
 ## **3. Data Sources**
 
@@ -37,9 +46,10 @@ The workflow consists of three distinct stages:
 - **Format:** `.npy` files with shape `(Height, Width, 224)` in `float64`.
 - **Role:** Used to train the GAN to learn the texture-to-spectrum mapping.
 - **Our Modifications:**
-  - **Patch-Based Loading:** Random 256×256 patches extracted from valid leaf areas, ignoring black backgrounds.
-  - **Data Augmentation:** Horizontal/vertical flip, 90°/180°/270° rotation, transpose, and Gaussian noise injection for ~6× effective dataset size.
+  - **Patch-Based Loading:** Random 256×256 patches extracted from valid leaf areas.
+  - **Data Augmentation:** Horizontal/vertical flip, 90°/180°/270° rotation, and Gaussian noise injection.
   - **SNV Normalization:** Standard Normal Variate preprocessing applied to spectral data.
+  - **Synthetic Disease Injection:** Multi-phenotype (chlorosis, water stress, early blight) disease simulation.
 
 | Crop | Samples | Avg Size |
 |------|---------|----------|
@@ -58,7 +68,7 @@ The workflow consists of three distinct stages:
 - **Role:** Acts as the "Teacher" for the classification model, providing the true spectral curves for various crops.
 - **Our Modifications:**
   - **Spectral Truncation:** Original file includes SWIR bands up to 2345nm. Since our AI model outputs up to 1000nm, the library is filtered to **only use common bands (400nm - 1000nm)**.
-  - **Header Standardization:** Column headers aligned (e.g., X437, X447) to ensure the AI-generated CSV matches the library's format exactly.
+  - **Header Standardization:** Column headers aligned to ensure the AI-generated CSV matches the library's format exactly.
 
 ## **4. Installation & Requirements**
 
@@ -79,18 +89,18 @@ python -m venv venv
 # Linux/Mac
 source venv/bin/activate
 
-# Install dependencies (CPU)
-pip install torch torchvision numpy matplotlib tqdm
+# Install core dependencies
+pip install torch torchvision numpy matplotlib scipy scikit-learn
 
 # Install dependencies (GPU - CUDA 12.x, Recommended)
 pip install torch torchvision --index-url https://download.pytorch.org/whl/cu121
-pip install numpy matplotlib tqdm
+pip install numpy matplotlib scipy scikit-learn
 
-# Additional dependencies for classification (Step 5)
-pip install pandas scipy h5py scikit-learn xgboost joblib
+# Additional dependencies
+pip install pandas h5py xgboost joblib opencv-python-headless
 
-# Additional dependencies for disease detection (Steps 6-7)
-pip install tensorflow openpyxl
+# Optional: TensorBoard for training monitoring
+pip install tensorboard
 ```
 
 ## **5. Directory Structure**
@@ -99,22 +109,21 @@ pip install tensorflow openpyxl
 Project_Root/
 │
 ├── models.py                 # GAN Architecture (ResNet Generator + PatchGAN Discriminator)
-├── train_optimized.py        # Step 1: Optimized Training Script (augmentation + SAM loss)
-├── visualize.py              # Step 2: Visualize model output quality
-├── inference_tiled.py        # Step 3: Convert new RGB Images to Hyperspectral Cubes
-├── mat_to_csv_resampled.py   # Step 4: Flatten Cubes to Lab-Matched CSV
-├── classify_crops.py         # Step 5: Predict Crop Name & Growth Stage
+├── train_physics_aware.py    # Step 1: Physics-aware training with disease injection
+├── validate_fidelity.py      # Step 2: Validate disease-signal preservation
+├── inference_tiled.py        # Step 3: Convert RGB images to Hyperspectral cubes (tiled)
+├── mat_to_csv_resampled.py   # Step 4: Flatten cubes to lab-matched CSV
+├── classify_crops.py         # Step 5: Predict crop name & growth stage
 ├── spectral_indices.py       # Step 6: 11 Spectral Vegetation Indices (NDVI, PRI, etc.)
-├── disease_detector.py       # Step 6: Health Scoring + Visual Reports
-├── classify_disease.py       # Step 7: Disease Risk Classification (XGBoost)
-├── dual_branch_cnn.py        # Dual-Branch 2-CNN (Spatial + Spectral branches)
-├── enhanced_agri_dataset.csv # Disease training data (6988 samples, 5 crops)
+├── disease_detector.py       # Step 6: Health scoring + visual reports
+├── classify_disease.py       # Step 7: Disease risk classification (XGBoost)
+├── model_dual_stream_v2.py   # Step 8: Dual-Stream CNN with SE attention
 │
 ├── codes/                    # Jupyter notebooks for data preparation
-│   ├── augment.ipynb         # Data augmentation examples
-│   ├── preprocess.ipynb      # Spectral preprocessing (SNV, Savitzky-Golay)
-│   ├── image_roi.ipynb       # Region of interest extraction
-│   └── spectral_roi.ipynb    # Spectral signature extraction
+│   ├── augment.ipynb
+│   ├── preprocess.ipynb
+│   ├── image_roi.ipynb
+│   └── spectral_roi.ipynb
 │
 ├── checkpoints/              # Model weights (.pth) saved here
 ├── visualizations/           # Generated comparison images
@@ -128,21 +137,23 @@ Project_Root/
 
 ### **Step 1: Train the Spectral Reconstruction Model**
 
-Trains the AI to understand the relationship between RGB colors and spectral curves across 224 bands.
+Trains the GAN with physics-aware loss and synthetic disease injection.
 
 - **Input:** `.npy` files in crop dataset folders (auto-detected).
 - **Command:**
 ```bash
-python train_optimized.py
+python train_physics_aware.py
 ```
 - **Output:** Saves `best_model.pth` and `netG_final.pth` in `checkpoints/`.
 - **Training Features:**
   - Auto-detects all crop folders with `.npy` files
-  - Data augmentation (flip, rotate, transpose, noise)
-  - SNV spectral normalization
-  - Combined loss: L1 + Spectral Angle Mapper + Gradient
+  - Multi-phenotype synthetic disease injection (chlorosis, water stress, early blight)
+  - Physics-correct RGB extraction (R=640nm, G=550nm, B=470nm)
+  - Combined loss: L1 + SAM + Gradient + Vegetation Index (NDVI + PRI + 1.5×NDRE)
+  - Mixed-precision training (AMP) when GPU available
+  - Early stopping (patience=15 epochs)
+  - TensorBoard logging (optional)
   - Cosine annealing learning rate (2e-4 → 1e-6)
-  - Validation split with best model saving
 
 | Parameter | Default | Description |
 |-----------|---------|-------------|
@@ -150,29 +161,40 @@ python train_optimized.py
 | `BATCH_SIZE` | 4 | Increase with more GPU memory |
 | `CROP_SIZE` | 256 | Random crop size |
 | `LEARNING_RATE` | 0.0002 | Initial learning rate |
+| `EARLY_STOP_PATIENCE` | 15 | Epochs without improvement before stopping |
 
 > *Note: Takes ~4-8 hours on a GPU, or several days on a CPU.*
 
-### **Step 2: Visualize Model Output**
+### **Step 2: Validate Disease-Signal Fidelity**
 
-Generates comparison images showing input RGB vs ground truth vs generated hyperspectral.
+Validates that the trained model preserves disease signals instead of "hallucinating health."
 
 - **Command:**
 ```bash
-python visualize.py
+# Single file
+python validate_fidelity.py
+
+# Batch validation across all crop folders
+python validate_fidelity.py --batch
+
+# Save JSON report
+python validate_fidelity.py --batch --json fidelity_report.json
 ```
-- **Output:** Saves comparison images in `visualizations/` showing spectral signatures, error maps, and band comparisons.
+- **Indices Checked:** NDVI, PRI, NDRE (weighted 1.2×), REIP
+- **Output:** Pass/fail per-index report with weighted scoring.
 
 ### **Step 3: Convert RGB Images to Hyperspectral**
 
-Takes normal photos and generates spectral data cubes.
+Takes normal photos and generates spectral data cubes using tiled inference.
 
-- **Input:** JPEG images inside `input_images/`.
+- **Input:** JPEG/PNG images inside `input_images/`.
 - **Command:**
 ```bash
 python inference_tiled.py
+python inference_tiled.py --tile-size 256 --overlap 32
 ```
-- **Output:** Generates `.mat` files in `output_mats/`.
+- **Output:** Generates `.npy` and `.mat` files in `output_mats/` with automatic NDVI health check.
+- **Features:** Overlapping tiles with Hanning-window blending to avoid seam artifacts.
 
 ### **Step 4: Flatten to Spectral Library (CSV)**
 
@@ -212,9 +234,8 @@ python disease_detector.py
 
 ### **Step 7: Classify Disease Risk**
 
-Trains a disease prediction model using the Enhanced Agri Dataset and predicts disease probability.
+Trains a disease prediction model using spectral indices and environmental data.
 
-- **Dataset:** `enhanced_agri_dataset.csv` (6,988 samples, 5 crops, with Disease_Prob labels)
 - **Features Used:** Spectral indices + Soil (N, P, K, pH) + Environmental (Temperature, Rainfall, Irrigation)
 - **Train the model:**
 ```bash
@@ -230,20 +251,19 @@ python classify_disease.py --analyze
 ```
 - **Output:** Classification report, feature importance analysis, and `disease_predictions.csv`
 
-### **Step 8: Train Dual-Branch CNN (Deep Learning)**
+### **Step 8: Dual-Stream CNN Disease Detection**
 
-Uses a specialized dual-branch CNN architecture combining spatial and spectral analysis for disease detection.
+Uses a specialized dual-stream CNN architecture combining spatial and spectral analysis.
 
 - **Architecture:**
-  - **Branch 1 (Spatial CNN):** 2D convolutions extract visual features — lesion shapes, discoloration
-  - **Branch 2 (Spectral CNN):** 1D convolutions analyze spectral signatures — chlorophyll and pigment changes
-  - **Fusion Head:** Concatenates both branches → Dense layers → Softmax classification
-- **Command:**
+  - **Branch 1 (Spatial CNN):** 2D convolutions on 11 spectral-index channels with SE (Squeeze-and-Excitation) attention — learns which indices (NDVI, PRI, NDRE, etc.) matter most per-image
+  - **Branch 2 (Spectral CNN):** 1D convolutions analyze the mean spectral signature (224 bands) with residual connections
+  - **Fusion Head:** Concatenates both branches → Dense layers → Class predictions + Confidence score
+- **Self-test:**
 ```bash
-python dual_branch_cnn.py --train
-python dual_branch_cnn.py --train --epochs 100
+python model_dual_stream_v2.py
 ```
-- **Output:** Trained model (`dual_branch_disease_model.keras`) + training history plots
+- **Output:** Trained dual-stream disease detection model with per-prediction confidence scores
 
 ## **7. Model Performance**
 
@@ -266,7 +286,7 @@ python dual_branch_cnn.py --train --epochs 100
 
 **Issue 1: The output image is just black and brown blocks.**
 - **Cause:** The model learned the "Black Background" bias from the training data.
-- **Fix:** The optimized training script (`train_optimized.py`) uses patch-based random cropping to focus on leaf texture only.
+- **Fix:** The physics-aware training script (`train_physics_aware.py`) uses patch-based random cropping to focus on leaf texture only.
 
 **Issue 2: The predicted spectral values are tiny (e.g., 0.04 instead of 16.0).**
 - **Cause:** Deep Learning outputs 0-1 range, and black backgrounds dilute the average.
@@ -279,6 +299,10 @@ python dual_branch_cnn.py --train --epochs 100
 **Issue 4: Images too small for training.**
 - **Cause:** Some images have dimensions smaller than the crop size (256×256).
 - **Fix:** These are automatically skipped with a warning message. Reduce `CROP_SIZE` if needed.
+
+**Issue 5: Model "hallucinating health" — diseased inputs produce healthy-looking reconstructions.**
+- **Cause:** Training data was mostly healthy plants ("Healthy Bias").
+- **Fix:** `train_physics_aware.py` injects synthetic disease during training. Run `validate_fidelity.py` to verify disease signals are preserved.
 
 ## **9. Adding New Crop Data**
 
@@ -299,6 +323,7 @@ crop_name/crop_name/crop_1.npy # ✓ Nested structure
 - [Pix2Pix – Image-to-Image Translation (Isola et al., 2017)](https://arxiv.org/abs/1611.07004)
 - [Spectral Angle Mapper (Kruse et al., 1993)](https://doi.org/10.1016/0034-4257(93)90013-N)
 - [SNV Normalization (Barnes et al., 1989)](https://doi.org/10.1366/0003702894202201)
+- [Squeeze-and-Excitation Networks (Hu et al., 2018)](https://arxiv.org/abs/1709.01507)
 - [USDA Proximal Hyperspectral Dataset](https://agdatacommons.nal.usda.gov/articles/media/Proximal_Hyperspectral_Image_Dataset_of_Various_Crops_and_Weeds_for_Classification_via_Machine_Learning_and_Deep_Learning_Techniques/25306255/1)
 
 ## **License**
